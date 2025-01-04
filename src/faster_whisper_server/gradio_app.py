@@ -1,12 +1,13 @@
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import gradio as gr
 import httpx
 from httpx_sse import connect_sse
 from openai import OpenAI
 
-from faster_whisper_server.config import Config, Task
+from faster_whisper_server.config import Config, Language, ResponseFormat, Task
 
 TRANSCRIPTION_ENDPOINT = "/v1/audio/transcriptions"
 TRANSLATION_ENDPOINT = "/v1/audio/translations"
@@ -14,52 +15,64 @@ TIMEOUT_SECONDS = 180
 TIMEOUT = httpx.Timeout(timeout=TIMEOUT_SECONDS)
 
 
-def create_gradio_demo(config: Config) -> gr.Blocks:
+def create_gradio_demo(config: Config) -> gr.Blocks:  # noqa: C901
     base_url = f"http://{config.host}:{config.port}"
     http_client = httpx.Client(base_url=base_url, timeout=TIMEOUT)
     openai_client = OpenAI(base_url=f"{base_url}/v1", api_key="cant-be-empty")
 
-    def handler(file_path: str, model: str, task: Task, temperature: float, stream: bool) -> Generator[str, None, None]:
+    def handler(
+        file_path: str,
+        model: str,
+        task: Task,
+        language: Language,
+        response_format: ResponseFormat,
+        temperature: float,
+        stream: bool,
+    ) -> Generator[str, None, None]:
         if task == Task.TRANSCRIBE:
             endpoint = TRANSCRIPTION_ENDPOINT
         elif task == Task.TRANSLATE:
             endpoint = TRANSLATION_ENDPOINT
-
+        data = {
+            "response_format": response_format,
+            "temperature": temperature,
+            "model": model,
+        }
+        if language is not None:
+            data["language"] = language
         if stream:
+            data["stream"] = True
             previous_transcription = ""
-            for transcription in streaming_audio_task(file_path, endpoint, temperature, model):
+            for transcription in streaming_audio_task(file_path, endpoint, data):
                 previous_transcription += transcription
                 yield previous_transcription
         else:
-            yield audio_task(file_path, endpoint, temperature, model)
+            yield audio_task(file_path, endpoint, data)
 
-    def audio_task(file_path: str, endpoint: str, temperature: float, model: str) -> str:
+    def audio_task(
+        file_path: str,
+        endpoint: str,
+        data: dict[str, Any],
+    ) -> str:
         with Path(file_path).open("rb") as file:
             response = http_client.post(
                 endpoint,
                 files={"file": file},
-                data={
-                    "model": model,
-                    "response_format": "text",
-                    "temperature": temperature,
-                },
+                data=data,
             )
 
         response.raise_for_status()
         return response.text
 
     def streaming_audio_task(
-        file_path: str, endpoint: str, temperature: float, model: str
+        file_path: str,
+        endpoint: str,
+        data: dict[str, Any],
     ) -> Generator[str, None, None]:
         with Path(file_path).open("rb") as file:
             kwargs = {
                 "files": {"file": file},
-                "data": {
-                    "response_format": "text",
-                    "temperature": temperature,
-                    "model": model,
-                    "stream": True,
-                },
+                "data": data,
             }
             with connect_sse(http_client, "POST", endpoint, **kwargs) as event_source:
                 for event in event_source.iter_sse():
@@ -84,11 +97,26 @@ def create_gradio_demo(config: Config) -> gr.Blocks:
         label="Model",
         value=config.whisper.model,
     )
+
+    # None for auto-detect
+    language_dropdown = gr.Dropdown(
+        choices=[None] + [language.value for language in Language],
+        label="Language",
+        value=None,
+    )
+
+    response_format_dropdown = gr.Dropdown(
+        choices=[response_format.value for response_format in ResponseFormat],
+        label="Response Format",
+        value=ResponseFormat.TEXT,
+    )
+
     task_dropdown = gr.Dropdown(
         choices=[task.value for task in Task],
         label="Task",
         value=Task.TRANSCRIBE,
     )
+
     temperature_slider = gr.Slider(minimum=0.0, maximum=1.0, step=0.1, label="Temperature", value=0.0)
     stream_checkbox = gr.Checkbox(label="Stream", value=True)
     with gr.Interface(
@@ -98,6 +126,8 @@ def create_gradio_demo(config: Config) -> gr.Blocks:
             gr.Audio(type="filepath"),
             model_dropdown,
             task_dropdown,
+            language_dropdown,
+            response_format_dropdown,
             temperature_slider,
             stream_checkbox,
         ],

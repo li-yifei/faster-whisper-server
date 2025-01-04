@@ -1,3 +1,33 @@
+# About this fork
+
+added more options for the gradio demo app
+
+- language
+- response format
+
+## caveats
+streaming in srt/vtt format is broken probably due to `httpx-sse`'s limitation
+
+<details>
+While the server yields SSE events with multi-line data chunks, like
+
+```plaintext
+data: 2\n00:00:02,000 --> 00:00:03,000\nA random phrase\n\n\n\n
+```
+which transforms to subtitle line like
+
+```srt
+2
+00:00:02,000 --> 00:00:03,000
+A random phrase
+```
+
+method `httpx-sse.EventSource.iter_sse` parses the chunk line by line, that only the first line is considered valid and the rest are ignored.
+
+See:
+- https://github.com/florimondmanca/httpx-sse/blob/403b91c262236b685b8c51a35b7eaba234029b20/src/httpx_sse/_api.py#L30-L34
+</details>
+
 # Faster Whisper Server
 
 `faster-whisper-server` is an OpenAI API-compatible transcription server which uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) as its backend.
