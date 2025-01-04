@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=nvidia/cuda:12.6.2-cudnn-runtime-ubuntu24.04
+ARG BASE_IMAGE=nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 FROM ${BASE_IMAGE}
 LABEL org.opencontainers.image.source="https://github.com/fedirz/faster-whisper-server"
 # `ffmpeg` is installed because without it `gradio` won't work with mp3(possible others as well) files
@@ -11,7 +11,7 @@ USER ubuntu
 ENV HOME=/home/ubuntu \
     PATH=/home/ubuntu/.local/bin:$PATH
 WORKDIR $HOME/faster-whisper-server
-COPY --chown=ubuntu --from=ghcr.io/astral-sh/uv:0.5.11 /uv /bin/uv
+COPY --chown=ubuntu --from=ghcr.io/astral-sh/uv:0.5.14 /uv /bin/uv
 # https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 # https://docs.astral.sh/uv/guides/integration/docker/#compiling-bytecode
 RUN --mount=type=cache,target=/root/.cache/uv \
